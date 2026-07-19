@@ -1,0 +1,47 @@
+.github/workflows/build-weedfs-amd64.yml
+  d70491ca3f9277db 1-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8-ntes.9",
+  "base_commit_sha": "9495e787c19f999a50d2bb219fe96053e3326be2",
+  "prompts": {
+    "3d2c5552bd093211": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6a40-cf8a-7be1-8e82-9aa708253298",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "wangzhike",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 708,
+      "overriden_lines": 0,
+      "per_file_stats": {
+        "docs/design/oceanbase-vectordb-plugin-plan.md": {
+          "accepted_lines": 708
+        }
+      }
+    },
+    "d70491ca3f9277db": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6de3-d5b0-7881-b7ef-c9d33dfaa76b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "wangzhike",
+      "messages": [],
+      "total_additions": 39,
+      "total_deletions": 0,
+      "accepted_lines": 39,
+      "overriden_lines": 0,
+      "per_file_stats": {
+        ".github/workflows/build-weedfs-amd64.yml": {
+          "additions": 39,
+          "accepted_lines": 39
+        }
+      }
+    }
+  }
+}
