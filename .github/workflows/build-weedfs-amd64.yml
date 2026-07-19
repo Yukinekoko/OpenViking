@@ -1,0 +1,39 @@
+name: Build WeedFS-compatible AMD64 image
+
+on:
+  push:
+    branches:
+      - codex/v0.4.10-weedfs-fix
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push AMD64 image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/yukinekoko/openviking:v0.4.10-weedfs.1
+          build-args: |
+            OPENVIKING_VERSION=0.4.10+weedfs.1
