@@ -1084,18 +1084,22 @@ impl S3Client {
     /// Check if a directory exists (either marker or any children)
     pub async fn directory_exists(&self, path: &str) -> Result<bool> {
         let dir_key = self.build_key(path);
+        let object_key = dir_key.trim_end_matches('/');
+
+        // Prefer an exact object over a same-name directory. Some S3-compatible
+        // gateways return 5xx for HEAD requests that append '/' to a file key.
+        if !object_key.is_empty() && self.head_object(object_key).await?.is_some() {
+            return Ok(false);
+        }
+
         let dir_key_slash = if dir_key.ends_with('/') {
-            dir_key.clone()
+            dir_key
         } else {
             format!("{}/", dir_key)
         };
 
-        // Check if directory marker exists
-        if self.head_object(&dir_key_slash).await?.is_some() {
-            return Ok(true);
-        }
-
-        // Check if any objects exist with this prefix
+        // A directory marker is itself returned by this prefix listing, so no
+        // separate HEAD request for the trailing-slash key is needed.
         let resp = self
             .client
             .list_objects_v2()
@@ -1196,6 +1200,11 @@ mod tests {
     use super::*;
     use crate::core::Error;
     use aws_sdk_s3::error::{ErrorMetadata, ProvideErrorMetadata};
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
 
     #[derive(Debug)]
     struct FakeServiceError {
@@ -1242,6 +1251,86 @@ mod tests {
             disable_batch_delete: false,
             auto_detect_content_type: false,
         }
+    }
+
+    fn test_client_with_endpoint(endpoint: &str) -> S3Client {
+        S3Client {
+            client: Client::from_conf(
+                aws_sdk_s3::Config::builder()
+                    .behavior_version(BehaviorVersion::latest())
+                    .region(Region::new("us-east-1"))
+                    .credentials_provider(Credentials::new(
+                        "test-access-key",
+                        "test-secret-key",
+                        None,
+                        None,
+                        "s3fs-test",
+                    ))
+                    .endpoint_url(endpoint)
+                    .force_path_style(true)
+                    .build(),
+            ),
+            bucket: "test-bucket".to_string(),
+            prefix: String::new(),
+            normalize_encoding_chars: String::new(),
+            marker_mode: DirectoryMarkerMode::Empty,
+            disable_batch_delete: false,
+            auto_detect_content_type: false,
+        }
+    }
+
+    fn serve_existing_file_once() -> (String, mpsc::Receiver<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock S3 server");
+        let endpoint = format!(
+            "http://{}",
+            listener.local_addr().expect("mock server address")
+        );
+        let (request_tx, request_rx) = mpsc::channel();
+
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept mock S3 request");
+            let mut request_line = String::new();
+            BufReader::new(stream.try_clone().expect("clone mock S3 stream"))
+                .read_line(&mut request_line)
+                .expect("read mock S3 request line");
+
+            let is_exact_file_head =
+                request_line.starts_with("HEAD /test-bucket/backend_meta.json HTTP/");
+            let status = if is_exact_file_head {
+                "200 OK"
+            } else {
+                "500 Internal Server Error"
+            };
+            let response =
+                format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            stream
+                .write_all(response.as_bytes())
+                .expect("write mock S3 response");
+            request_tx
+                .send(request_line.trim().to_string())
+                .expect("record mock S3 request");
+        });
+
+        (endpoint, request_rx)
+    }
+
+    #[tokio::test]
+    async fn test_directory_exists_checks_exact_file_before_directory_prefix() {
+        let (endpoint, request_rx) = serve_existing_file_once();
+        let client = test_client_with_endpoint(&endpoint);
+
+        let exists = client
+            .directory_exists("backend_meta.json")
+            .await
+            .expect("same-name file must not trigger a trailing-slash directory probe");
+
+        assert!(!exists);
+        assert_eq!(
+            request_rx
+                .recv_timeout(Duration::from_secs(1))
+                .expect("mock S3 request"),
+            "HEAD /test-bucket/backend_meta.json HTTP/1.1"
+        );
     }
 
     #[test]
