@@ -1,0 +1,49 @@
+crates/ragfs/src/plugins/s3fs/client.rs
+  d70491ca3f9277db 891-898,900,905-906,1007-1011,1060-1137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8-ntes.9",
+  "base_commit_sha": "f15d0f5c6d3c9085b953bc354cf39ff5728dd53e",
+  "prompts": {
+    "3d2c5552bd093211": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6a40-cf8a-7be1-8e82-9aa708253298",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "wangzhike",
+      "messages": [],
+      "total_additions": 708,
+      "total_deletions": 0,
+      "accepted_lines": 708,
+      "overriden_lines": 0,
+      "per_file_stats": {
+        "docs/design/oceanbase-vectordb-plugin-plan.md": {
+          "additions": 708,
+          "accepted_lines": 708
+        }
+      }
+    },
+    "d70491ca3f9277db": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6de3-d5b0-7881-b7ef-c9d33dfaa76b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "wangzhike",
+      "messages": [],
+      "total_additions": 100,
+      "total_deletions": 11,
+      "accepted_lines": 96,
+      "overriden_lines": 0,
+      "per_file_stats": {
+        "crates/ragfs/src/plugins/s3fs/client.rs": {
+          "additions": 100,
+          "deletions": 11,
+          "accepted_lines": 96
+        }
+      }
+    }
+  }
+}
