@@ -1,0 +1,48 @@
+.github/workflows/build-fork-image.yml
+  d8151f624a3af9d5 1-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8-ntes.9",
+  "base_commit_sha": "adf8ce0cda0cb2bbc3d693cd8a707d69defa2a25",
+  "prompts": {
+    "3d2c5552bd093211": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6a40-cf8a-7be1-8e82-9aa708253298",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "wangzhike",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 708,
+      "overriden_lines": 0,
+      "per_file_stats": {
+        "docs/design/oceanbase-vectordb-plugin-plan.md": {
+          "accepted_lines": 708
+        }
+      }
+    },
+    "d8151f624a3af9d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21c517e0-9253-4e44-a611-ec9a21df823b",
+        "model": "glm-5.2-aliyun"
+      },
+      "human_author": "wangzhike",
+      "messages": [],
+      "total_additions": 79,
+      "total_deletions": 1,
+      "accepted_lines": 78,
+      "overriden_lines": 0,
+      "per_file_stats": {
+        ".github/workflows/build-fork-image.yml": {
+          "additions": 79,
+          "deletions": 1,
+          "accepted_lines": 78
+        }
+      }
+    }
+  }
+}
