@@ -422,6 +422,30 @@ class CollectionAdapter(ABC):
             coll.upsert_data(normalized)
         return ids
 
+    def update_data(self, data: Dict[str, Any] | list[Dict[str, Any]]) -> list[str]:
+        """Partial update: re-fetches existing points (with vectors) and merges.
+
+        Unlike ``upsert``, this delegates to ``Collection.update_data`` which
+        preserves existing dense/sparse vectors — so callers that only modify
+        payload fields (e.g. ``search_tags``) do not need to supply a vector.
+        """
+        coll = self.get_collection()
+        records = [data] if isinstance(data, dict) else data
+        normalized: list[Dict[str, Any]] = []
+        for item in records:
+            record = self._normalize_record_for_write(item)
+            normalized.append(record)
+        if not normalized:
+            return []
+        batch_size = self._DATA_BATCH_SIZE
+        ids: list[str] = []
+        if batch_size and len(normalized) > batch_size:
+            for i in range(0, len(normalized), batch_size):
+                ids.extend(coll.update_data(normalized[i : i + batch_size]))
+        else:
+            ids = coll.update_data(normalized)
+        return ids
+
     def get(self, ids: list[str]) -> list[Dict[str, Any]]:
         if not ids:
             return []
