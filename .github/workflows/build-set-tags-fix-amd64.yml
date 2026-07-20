@@ -34,6 +34,6 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/yukinekoko/openviking:set-tags-fix.1
+          tags: ghcr.io/yukinekoko/openviking:v0.4.10-fix2
           build-args: |
-            OPENVIKING_VERSION=0.4.10+set-tags-fix.1
+            OPENVIKING_VERSION=0.4.10+fix2
