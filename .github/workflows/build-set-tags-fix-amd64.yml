@@ -34,6 +34,6 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/yukinekoko/openviking:v0.4.10-fix2
+          tags: ghcr.io/yukinekoko/openviking:v0.4.10-fix3
           build-args: |
-            OPENVIKING_VERSION=0.4.10+fix2
+            OPENVIKING_VERSION=0.4.10+fix3
