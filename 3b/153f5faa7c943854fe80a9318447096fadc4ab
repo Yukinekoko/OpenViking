@@ -1,0 +1,61 @@
+openviking/storage/viking_vector_index_backend.py
+  d8151f624a3af9d5 1006,1061
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8-ntes.9",
+  "base_commit_sha": "3b153f5faa7c943854fe80a9318447096fadc4ab",
+  "prompts": {
+    "3d2c5552bd093211": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6a40-cf8a-7be1-8e82-9aa708253298",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "wangzhike",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 708,
+      "overriden_lines": 0,
+      "per_file_stats": {
+        "docs/design/oceanbase-vectordb-plugin-plan.md": {
+          "accepted_lines": 708
+        }
+      }
+    },
+    "d70491ca3f9277db": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6de3-d5b0-7881-b7ef-c9d33dfaa76b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "wangzhike",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "d8151f624a3af9d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21c517e0-9253-4e44-a611-ec9a21df823b",
+        "model": "glm-5.2-aliyun"
+      },
+      "human_author": "wangzhike",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0,
+      "per_file_stats": {
+        "openviking/storage/viking_vector_index_backend.py": {
+          "additions": 2,
+          "deletions": 2,
+          "accepted_lines": 2
+        }
+      }
+    }
+  }
+}
