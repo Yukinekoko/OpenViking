@@ -1003,7 +1003,7 @@ class VikingVectorIndexBackend:
                 )
                 return []
 
-            if await self.upsert(updated_record, ctx=ctx):
+            if (await self.update(updated_record, ctx=ctx)).ok:
                 return [updated_record]
             return []
 
@@ -1058,7 +1058,7 @@ class VikingVectorIndexBackend:
                     exc,
                 )
                 return []
-            if await self.upsert(updated_record, ctx=ctx):
+            if (await self.update(updated_record, ctx=ctx)).ok:
                 updated_records.append(updated_record)
         return updated_records
 
