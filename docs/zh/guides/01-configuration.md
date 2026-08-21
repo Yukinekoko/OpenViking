@@ -1527,6 +1527,41 @@ acl_inherited_grants
 
 
 
+<details>
+<summary><b>Qdrant REST</b></summary>
+
+Qdrant 使用 Python 标准库 REST transport，不需要新增 `qdrant-client`
+依赖。`sparse_weight=0` 表示 dense-only；设置为 `(0, 1]` 内的值会启用
+named sparse vector 和客户端 weighted RRF hybrid search：
+
+```json
+{
+  "storage": {
+    "vectordb": {
+      "backend": "qdrant",
+      "url": "http://127.0.0.1:6333",
+      "project": "default",
+      "name": "context",
+      "dimension": 1536,
+      "sparse_weight": 0.5,
+      "qdrant": {
+        "api_key": "optional-key",
+        "timeout_seconds": 10,
+        "dense_vector_name": "vector",
+        "sparse_vector_name": "sparse_vector"
+      }
+    }
+  }
+}
+```
+
+OpenViking 会在确定性的 sidecar collection 中保存 metadata marker 和 sparse
+term dictionary。没有 marker 的既有 Qdrant collection 会 fail closed，不会被
+隐式接管。URI scope metadata、account 隔离和多 tag 过滤会保留；`Contains`
+及服务端 content grep 不支持，因此 grep 继续使用 filesystem fallback
+（`USE_CONTENT_FIELD=False`）。
+</details>
+
 ## 配置文件
 
 OpenViking 使用两个配置文件：

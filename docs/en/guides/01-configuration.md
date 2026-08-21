@@ -1551,6 +1551,49 @@ Set `mode` to `"distributed"` for openGauss distributed deployments; OpenViking 
 </details>
 
 
+<details>
+<summary><b>Qdrant REST</b></summary>
+
+Qdrant uses the standard-library REST transport; no `qdrant-client` dependency is
+required. Set `sparse_weight` to `0` for dense-only mode, or to a value in
+`(0, 1]` to enable named sparse vectors and client-side weighted RRF hybrid
+search:
+
+```json
+{
+  "storage": {
+    "vectordb": {
+      "backend": "qdrant",
+      "url": "http://127.0.0.1:6333",
+      "project": "default",
+      "name": "context",
+      "dimension": 1536,
+      "sparse_weight": 0.5,
+      "qdrant": {
+        "api_key": "optional-key",
+        "timeout_seconds": 10,
+        "dense_vector_name": "vector",
+        "sparse_vector_name": "sparse_vector"
+      }
+    }
+  }
+}
+```
+
+OpenViking stores a metadata marker and sparse term dictionary in a deterministic
+sidecar collection. Existing Qdrant collections without that marker fail closed
+instead of being adopted. URI scope metadata and account/tag filters are retained;
+`Contains` and server-side content grep are unsupported, so grep uses the
+filesystem fallback (`USE_CONTENT_FIELD=False`).
+
+For live coverage, set `QDRANT_URL` and optionally `QDRANT_API_KEY`, then run:
+
+```bash
+QDRANT_URL=http://127.0.0.1:6333 \
+  pytest --confcutdir=tests/storage -q tests/storage/test_qdrant_integration.py
+```
+</details>
+
 ## Config Files
 
 OpenViking uses two config files:
