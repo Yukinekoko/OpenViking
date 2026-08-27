@@ -39,7 +39,10 @@
 # ~/.claude/settings.json. That path needs a local copy of the plugin, so it
 # fetches the source even in remote mode.
 #
-# Targets bash 3.2+ (macOS /bin/bash) and Linux.
+# Targets bash 3.2+ (macOS /bin/bash), Linux, and Windows via Git Bash
+# (MSYS2/MINGW). On Windows the POSIX paths stay inside bash; arguments handed
+# to native executables are converted by MSYS path conversion automatically,
+# so configs written through node get native Windows paths for free.
 
 set -Eeuo pipefail
 
@@ -139,6 +142,14 @@ report_unexpected_error() { # report_unexpected_error <status> <line> <command>
 
 trap 'report_unexpected_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
 
+# Raw single-char tty reads (`read -rsn1`) hang on some Windows terminals even
+# though /dev/tty is writable, so on MSYS-family hosts fall back to line-based
+# numbered prompts, which work everywhere.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) TUI_RAW_INPUT=0 ;;
+  *) TUI_RAW_INPUT=1 ;;
+esac
+
 # Pure-bash substring test. Never pipe `claude/codex plugin list` into
 # `grep -q`: with pipefail, grep exiting early SIGPIPEs the producer and the
 # pipeline reads as a miss even though the entry is there.
@@ -226,7 +237,7 @@ tui_menu() { # tui_menu <title> <default-index> <option...>  -> TUI_MENU_CHOICE
   local n=${#opts[@]} cursor="$def" key rest reply i lines=0
   TUI_MENU_CHOICE="$def"
   [ "$INTERACTIVE" -eq 1 ] || return 0
-  if [ ! -w /dev/tty ]; then
+  if [ ! -w /dev/tty ] || [ "$TUI_RAW_INPUT" -eq 0 ]; then
     printf '%s%s%s\n' "$BOLD" "$title" "$RESET"
     i=0
     while [ "$i" -lt "$n" ]; do
@@ -786,6 +797,20 @@ EOF
 tui_choose_cli_format() {
   local cursor=0 key rest lines=0
   TUI_FORMAT_CHOICE=""
+  if [ ! -w /dev/tty ] || [ "$TUI_RAW_INPUT" -eq 0 ]; then
+    printf '%s%s%s\n' "$BOLD" "$(t 'Choose compatible format:' '选择兼容格式：')" "$RESET"
+    printf '  1) %s\n' "$(t 'Claude-format' 'Claude 格式')"
+    printf '  2) %s\n' "$(t 'Codex-format' 'Codex 格式')"
+    local reply
+    ask "[1-2, $(t 'default' '默认') 1]: "
+    read_tty reply
+    case "$reply" in
+      2) TUI_FORMAT_CHOICE="codex" ;;
+      q|Q) TUI_FORMAT_CHOICE="" ;;
+      *) TUI_FORMAT_CHOICE="claude" ;;
+    esac
+    return 0
+  fi
   printf '%s%s%s\n' "$BOLD" "$(t 'Choose compatible format:' '选择兼容格式：')" "$RESET" >/dev/tty
   printf '\033[?25l' >/dev/tty
   while :; do
@@ -883,9 +908,69 @@ tui_finish_selection() {
   return 0
 }
 
+# Line-based harness selection for terminals where raw single-char reads are
+# unreliable (MSYS hosts): numbered entries, toggling via comma-separated
+# numbers, 'a' selects all, empty input confirms.
+tui_select_harnesses_line() {
+  local total idx spec kind bin reply num mark
+  total="$(tui_total_count)"
+  while :; do
+    printf '%s%s%s\n' "$BOLD" "$(t 'Select the harnesses to install for:' '选择要安装的 harness：')" "$RESET"
+    idx=0
+    while [ "$idx" -lt "$total" ]; do
+      spec="$(tui_item_at "$idx")"
+      kind="${spec%%|*}"
+      bin="${spec#*|}"
+      if [ "$kind" = "add" ]; then
+        printf '  %d) %s\n' $((idx + 1)) "$(t 'Add compatible CLI...' '新增兼容 CLI...')"
+      else
+        mark=' '
+        tui_bin_selected "$kind" "$bin" && mark='x'
+        printf '  %d) [%s] %s' $((idx + 1)) "$mark" "$(tui_bin_label "$kind" "$bin")"
+        tui_bin_detected "$kind" "$bin" && printf ' %s' "$(t '(detected)' '（已检测到）')"
+        printf '\n'
+      fi
+      idx=$((idx + 1))
+    done
+    ask "$(t "Numbers to toggle (comma-separated), 'a' all, enter to confirm: " "输入编号切换（逗号分隔），'a' 全选，直接回车确认：")"
+    read_tty reply
+    case "$reply" in
+      '')
+        tui_has_selection && break
+        ;;
+      a|A)
+        tui_set_all_bins
+        ;;
+      *)
+        reply="${reply//,/ }"
+        for num in $reply; do
+          case "$num" in
+            ''|*[!0-9]*) continue ;;
+          esac
+          [ "$num" -ge 1 ] && [ "$num" -le "$total" ] || continue
+          spec="$(tui_item_at $((num - 1)))"
+          kind="${spec%%|*}"
+          bin="${spec#*|}"
+          if [ "$kind" = "add" ]; then
+            tui_add_compatible_cli
+            total="$(tui_total_count)"
+          else
+            tui_toggle_bin "$kind" "$bin"
+          fi
+        done
+        ;;
+    esac
+  done
+  tui_finish_selection
+}
+
 tui_select_harnesses() {
   local key rest spec kind bin total add_idx
   tui_reset_bin_selection
+  if [ ! -w /dev/tty ] || [ "$TUI_RAW_INPUT" -eq 0 ]; then
+    tui_select_harnesses_line
+    return 0
+  fi
   printf '%s%s%s\n' "$BOLD" "$(t 'Select the harnesses to install for:' '选择要安装的 harness：')" "$RESET" >/dev/tty
   printf '\033[?25l' >/dev/tty
   trap 'printf "\033[?25h" >/dev/tty' EXIT
@@ -2015,6 +2100,9 @@ agent_write_json_configs() { # agent_write_json_configs <kind> <hooks> <mcp> <ro
 const fs = require("node:fs");
 const path = require("node:path");
 const [kind, hooksPath, mcpPath, root, clientId, nodeBin, sourceMode] = process.argv.slice(2);
+// Windows hosts hand us backslash paths from MSYS conversion; write forward
+// slashes into the JSON so consumers and cross-platform greps stay consistent.
+const posixPath = (p) => String(p).replace(/\\/g, "/");
 
 function readJson(file) {
   if (!fs.existsSync(file)) return {};
@@ -2092,7 +2180,7 @@ function renderHookCommand(command) {
         .replaceAll("__OPENVIKING_CLIENT_ID__", clientId)}`;
     }
   }
-  return `${envPrefix} ${rendered} # openviking-memory`;
+  return `${envPrefix} ${posixPath(rendered)} # openviking-memory`;
 }
 
 function renderHookValue(value) {
@@ -2160,8 +2248,8 @@ if (isKnownLegacyOpenVikingServer(mcp.mcpServers["ov-mcp-server"])) {
 }
 const server = {
   ...templateServer,
-  command: nodeBin,
-  args: [path.join(root, "servers", "mcp-proxy.mjs")],
+  command: posixPath(nodeBin),
+  args: [posixPath(path.join(root, "servers", "mcp-proxy.mjs"))],
   env: { ...(templateServer.env || {}), ...integrationEnv },
 };
 mcp.mcpServers.openviking = server;
@@ -2196,6 +2284,9 @@ agent_write_trae_cli_configs() { # agent_write_trae_cli_configs <hooks> <traecli
 const fs = require("node:fs");
 const path = require("node:path");
 const [hooksPath, configPath, root, nodeBin, sourceMode] = process.argv.slice(2);
+// Windows hosts hand us backslash paths from MSYS conversion; write forward
+// slashes into the JSON/TOML so consumers and cross-platform greps stay consistent.
+const posixPath = (p) => String(p).replace(/\\/g, "/");
 const clientId = "trae-cli";
 const serverName = "openviking-memory";
 
@@ -2285,7 +2376,7 @@ function renderHookValue(value) {
     const match = /^node\s+__OPENVIKING_TRAE_CLI_ROOT__\/(\S+)$/u.exec(child);
     if (!match) throw new Error(`Unsupported TRAE CLI hook command template: ${child}`);
     const command = `${shellArg(nodeBin)} ${shellArg(path.join(root, match[1]))}`;
-    return [key, `${envPrefix} ${command} # openviking-memory`];
+    return [key, `${envPrefix} ${posixPath(command)} # openviking-memory`];
   }));
 }
 
@@ -2313,7 +2404,7 @@ const envToml = Object.entries(integrationEnv)
 const section = [
   `[mcp_servers."${serverName}"]`,
   `command = ${JSON.stringify(nodeBin)}`,
-  `args = [${JSON.stringify(path.join(root, "servers", "mcp-proxy.mjs"))}]`,
+  `args = [${JSON.stringify(posixPath(path.join(root, "servers", "mcp-proxy.mjs")))}]`,
   `env = { ${envToml} }`,
 ].join("\n");
 atomicWrite(configPath, `${toml ? `${toml}\n\n` : ""}${section}\n`);
@@ -2546,17 +2637,30 @@ NODE
 
 trae_mcp_path() { # trae_mcp_path <client-id>
   local client_id="$1"
-  if [ "$(uname -s)" = "Darwin" ]; then
-    if [ "$client_id" = "trae-cn" ]; then
-      printf '%s' "$HOME/Library/Application Support/Trae CN/User/mcp.json"
-    else
-      printf '%s' "$HOME/Library/Application Support/Trae/User/mcp.json"
-    fi
-  elif [ "$client_id" = "trae-cn" ]; then
-    printf '%s' "$HOME/.trae-cn/mcp.json"
-  else
-    printf '%s' "$HOME/.trae/mcp.json"
-  fi
+  case "$(uname -s)" in
+    Darwin)
+      if [ "$client_id" = "trae-cn" ]; then
+        printf '%s' "$HOME/Library/Application Support/Trae CN/User/mcp.json"
+      else
+        printf '%s' "$HOME/Library/Application Support/Trae/User/mcp.json"
+      fi
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      # Trae desktop on Windows keeps per-user config under %APPDATA%.
+      if [ "$client_id" = "trae-cn" ]; then
+        printf '%s' "${APPDATA:-$HOME/AppData/Roaming}/Trae CN/User/mcp.json"
+      else
+        printf '%s' "${APPDATA:-$HOME/AppData/Roaming}/Trae/User/mcp.json"
+      fi
+      ;;
+    *)
+      if [ "$client_id" = "trae-cn" ]; then
+        printf '%s' "$HOME/.trae-cn/mcp.json"
+      else
+        printf '%s' "$HOME/.trae/mcp.json"
+      fi
+      ;;
+  esac
 }
 
 install_cursor() {
@@ -3423,7 +3527,8 @@ select_language
 heading "$(t '1. Environment check' '1. 环境检查')"
 case "$(uname -s)" in
   Darwin|Linux) info "OS: $(uname -s)" ;;
-  *) err "Unsupported OS: $(uname -s). Only macOS and Linux are supported."; exit 1 ;;
+  MINGW*|MSYS*|CYGWIN*) info "OS: Windows ($(uname -s), Git Bash/MSYS)" ;;
+  *) err "Unsupported OS: $(uname -s). Only macOS, Linux, and Windows (Git Bash/MSYS) are supported."; exit 1 ;;
 esac
 command -v node >/dev/null 2>&1 || { err "$(t 'node not found. Install Node.js 18+.' '未找到 node，请先安装 Node.js 18+。')"; exit 1; }
 NODE_BIN="$(command -v node)"
