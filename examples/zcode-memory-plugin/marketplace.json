@@ -1,0 +1,10 @@
+{
+  "name": "openviking-local",
+  "description": "OpenViking memory plugin - local test marketplace",
+  "plugins": [
+    {
+      "name": "openviking-memory",
+      "source": "."
+    }
+  ]
+}
