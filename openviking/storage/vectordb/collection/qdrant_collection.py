@@ -28,6 +28,7 @@ from openviking.storage.vectordb.qdrant_utils import (
 _META_VERSION = 1
 _META_MARKER_ID = to_qdrant_point_id("openviking:metadata")
 _META_VECTOR_NAME = "meta"
+_SCROLL_PAGE_SIZE = 256
 _INTERNAL_PAYLOAD_FIELDS = {
     "uri_depth",
     "scope_roots",
@@ -445,7 +446,9 @@ class QdrantCollection(ICollection):
         offset: Any = None
         while len(points) < limit:
             body: dict[str, Any] = {
-                "limit": limit - len(points),
+                # Cap the page size: large single-page scroll requests can be
+                # rejected by Qdrant (strict mode / request size limits).
+                "limit": min(limit - len(points), _SCROLL_PAGE_SIZE),
                 "with_payload": self._payload_selector(output_fields),
                 "with_vector": with_vectors,
             }
@@ -611,6 +614,21 @@ class QdrantCollection(ICollection):
             params={"wait": "true"},
         )
         return {"status": "ok"}
+
+    def delete_by_filter(self, filters: dict[str, Any]) -> None:
+        """Delete all points matching *filters* in one server-side request.
+
+        Unlike the query-then-delete-by-id fallback, this is not bounded by
+        similarity-search limits and never truncates on large match sets.
+        """
+        if not filters:
+            raise ValueError("delete_by_filter requires a non-empty filter")
+        self._client.request(
+            "POST",
+            self._path(self._collection_name, "/points/delete"),
+            {"filter": filters},
+            params={"wait": "true"},
+        )
 
     def delete_all_data(self):
         self._client.request(
@@ -836,15 +854,24 @@ class QdrantCollection(ICollection):
         filters: dict[str, Any] | None = None,
         output_fields: list[str] | None = None,
     ) -> SearchResult:
-        return self.search_by_vector(
-            index_name,
-            dense_vector=None,
-            sparse_vector=None,
-            limit=limit,
-            offset=offset,
-            filters=filters,
+        del index_name
+        # Filter-only enumeration must not synthesize a dense vector: Qdrant
+        # strict mode caps similarity-search limits (max_query_limit) while
+        # scroll pagination is unrestricted, and a synthetic vector would also
+        # fail whenever the configured embedding dimension drifts from the
+        # collection dimension.
+        points = self._scroll(
+            self._collection_name,
+            filter=filters,
+            limit=limit + offset,
+            with_vectors=False,
             output_fields=output_fields,
         )
+        items: list[SearchItemResult] = []
+        for point in points[offset : offset + limit]:
+            record = self._payload_to_record(point)
+            items.append(SearchItemResult(id=record.get("id"), fields=record, score=1.0))
+        return SearchResult(data=items)
 
     def search_by_scalar(
         self,

@@ -679,14 +679,30 @@ class Collection:
             op (str): Aggregation operation, currently only supports "count"
             field (Optional[str]): Field name for grouping, None means return total count
             filters (Optional[Dict[str, Any]]): Filter conditions before aggregation
-            cond (Optional[Dict[str, Any]]): Conditions after aggregation, e.g., {"gt": 10}
+            cond (Optional[Dict[str, Any]]): Conditions after aggregation, e.g. {"gt": 10}
 
         Returns:
-            AggregateResult: Object containing aggregation results
+            AggregateResult: Object containing aggregation result
         """
         if self.__collection is None:
             raise RuntimeError("Collection is closed")
         return self.__collection.aggregate_data(index_name, op, field, filters, cond)
+
+    def delete_by_filter(self, filters: Dict[str, Any]) -> None:
+        """Delete all records matching *filters* in one backend request.
+
+        Optional backend capability: implementations without native
+        filter-based deletion raise AttributeError so callers can fall back
+        to the query-then-delete-by-id path.
+        """
+        if self.__collection is None:
+            raise RuntimeError("Collection is closed")
+        delete_by_filter = getattr(self.__collection, "delete_by_filter", None)
+        if not callable(delete_by_filter):
+            raise AttributeError(
+                "underlying collection does not implement delete_by_filter"
+            )
+        return delete_by_filter(filters)
 
     def close(self):
         """
