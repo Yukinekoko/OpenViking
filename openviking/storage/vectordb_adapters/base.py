@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import math
-import random
 import uuid
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterable, Optional
@@ -28,7 +27,6 @@ from openviking.storage.expr import (
 from openviking.storage.vectordb.collection.collection import Collection
 from openviking.storage.vectordb.collection.result import FetchDataInCollectionResult
 from openviking_cli.utils import get_logger
-from openviking_cli.utils.config import get_openviking_config
 from openviking_cli.utils.config.vectordb_config import DEFAULT_INDEX_NAME
 
 logger = get_logger(__name__)
@@ -498,13 +496,13 @@ class CollectionAdapter(ABC):
                 output_fields=output_fields,
             )
         else:
-            # Approximate random sampling with a client-generated random
-            # vector so every backend behaves consistently.
-            dim = get_openviking_config().embedding.dimension
-            random_vector = [random.uniform(-1, 1) for _ in range(dim)]
-            result = coll.search_by_vector(
+            # Filter-only enumeration (delete-by-filter id lookup, fetch-by-uri):
+            # delegate to the backend's vectorless search. Vector backends with
+            # strict request limits (e.g. Qdrant strict-mode max_query_limit)
+            # reject large-limit similarity searches, so never synthesize a
+            # random dense vector here.
+            result = coll.search_by_random(
                 index_name=self._index_name,
-                dense_vector=random_vector,
                 limit=limit,
                 offset=offset,
                 filters=vectordb_filter,

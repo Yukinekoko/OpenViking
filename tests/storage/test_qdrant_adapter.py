@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from openviking.storage.expr import And, Contains, Eq, In, Or, PathScope, RawDSL
+from openviking.storage.vectordb.collection.collection import Collection
 from openviking.storage.vectordb.collection.qdrant_collection import QdrantCollection
 from openviking.storage.vectordb.collection.qdrant_rest import QdrantError, QdrantRestClient
 from openviking.storage.vectordb.qdrant_sparse import SparseTermDictionary, stable_sparse_index
@@ -1255,3 +1256,124 @@ def test_qdrant_factory_registry_returns_qdrant_adapter() -> None:
     )
 
     assert isinstance(create_collection_adapter(config), QdrantCollectionAdapter)
+
+
+def _make_qdrant_collection(transport: _ScriptedTransport) -> QdrantCollection:
+    return QdrantCollection(
+        client=QdrantRestClient("http://qdrant.local", opener=transport),
+        collection_name="docs",
+        metadata_collection_name="docs__meta",
+        dense_vector_name="dense",
+        sparse_vector_name="sparse",
+        vector_dim=2,
+        distance="cosine",
+        sparse_enabled=False,
+        sparse_weight=0.0,
+    )
+
+
+def test_scroll_caps_single_page_size() -> None:
+    transport = _ScriptedTransport(
+        (200, {"result": {"points": [], "next_page_offset": None}}),
+    )
+    collection = _make_qdrant_collection(transport)
+
+    collection._scroll("docs", filter=None, limit=100000)
+
+    assert transport.requests[0]["body"]["limit"] == 256
+
+
+def test_search_by_random_uses_scroll_not_similarity_search() -> None:
+    transport = _ScriptedTransport(
+        (
+            200,
+            {
+                "result": {
+                    "points": [
+                        {
+                            "id": "pt-1",
+                            "payload": {"_openviking_original_id": "rec-1", "uri": "/a"},
+                        }
+                    ],
+                    "next_page_offset": None,
+                }
+            },
+        ),
+    )
+    collection = _make_qdrant_collection(transport)
+
+    result = collection.search_by_random(
+        "default", limit=100000, filters={"must": [{"key": "uri", "match": {"value": "/a"}}]}
+    )
+
+    assert [item.id for item in result.data] == ["rec-1"]
+    request = transport.requests[0]
+    assert urlsplit(request["url"]).path.endswith("/points/scroll")
+    assert "filter" in request["body"]
+    assert request["body"]["limit"] == 256
+
+
+def test_delete_by_filter_posts_native_filter_delete() -> None:
+    transport = _ScriptedTransport((200, {"result": {}}))
+    collection = _make_qdrant_collection(transport)
+    filters = {"must": [{"key": "account_id", "match": {"value": "acct-1"}}]}
+
+    collection.delete_by_filter(filters)
+
+    request = transport.requests[0]
+    assert request["method"] == "POST"
+    assert urlsplit(request["url"]).path.endswith("/points/delete")
+    assert request["body"] == {"filter": filters}
+
+
+def test_delete_by_filter_rejects_empty_filter() -> None:
+    collection = _make_qdrant_collection(_ScriptedTransport())
+
+    with pytest.raises(ValueError, match="non-empty filter"):
+        collection.delete_by_filter({})
+
+
+def test_adapter_delete_by_filter_counts_then_deletes_natively() -> None:
+    transport = _ScriptedTransport(
+        (200, {"result": {"count": 43}}),
+        (200, {"result": {}}),
+    )
+    config = VectorDBBackendConfig(
+        backend="qdrant",
+        qdrant={"url": "http://qdrant.local"},
+        dimension=2,
+    )
+    adapter = QdrantCollectionAdapter.from_config(config)
+    adapter._collection = Collection(_make_qdrant_collection(transport))
+
+    deleted = adapter.delete(filter=Eq("account_id", "acct-1"))
+
+    assert deleted == 43
+    count_request, delete_request = transport.requests
+    assert urlsplit(count_request["url"]).path.endswith("/points/count")
+    assert count_request["body"] == {
+        "filter": {"must": [{"key": "account_id", "match": {"value": "acct-1"}}]},
+        "exact": True,
+    }
+    assert urlsplit(delete_request["url"]).path.endswith("/points/delete")
+    assert delete_request["body"]["filter"] == {
+        "must": [{"key": "account_id", "match": {"value": "acct-1"}}]
+    }
+
+
+def test_adapter_delete_by_ids_falls_back_to_base_delete() -> None:
+    transport = _ScriptedTransport((200, {"result": {}}))
+    config = VectorDBBackendConfig(
+        backend="qdrant",
+        qdrant={"url": "http://qdrant.local"},
+        dimension=2,
+    )
+    adapter = QdrantCollectionAdapter.from_config(config)
+    adapter._collection = Collection(_make_qdrant_collection(transport))
+
+    deleted = adapter.delete(ids=["rec-1"])
+
+    assert deleted == 1
+    request = transport.requests[0]
+    assert urlsplit(request["url"]).path.endswith("/points/delete")
+    assert request["body"] == {"points": [to_qdrant_point_id("rec-1")]}

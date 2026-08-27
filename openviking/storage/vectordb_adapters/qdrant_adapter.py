@@ -165,7 +165,31 @@ class QdrantCollectionAdapter(CollectionAdapter):
     def _compile_filter(self, expr: Any) -> dict[str, Any]:
         return compile_qdrant_filter(expr)
 
-    def update_data(self, data_list: list[dict[str, Any]]) -> list[str]:
+    def delete(
+        self,
+        *,
+        ids: list[str] | None = None,
+        filter: Any = None,
+        limit: int = 100000,
+    ) -> int:
+        # Prefer Qdrant's native filter deletion: one server-side request,
+        # unaffected by strict-mode similarity-search limits, and no
+        # truncation on match sets larger than *limit*.
+        if not ids and filter is not None:
+            compiled = self._compile_filter(filter)
+            if compiled:
+                coll = self.get_collection()
+                count = coll.aggregate_data(
+                    index_name=self._index_name,
+                    op="count",
+                    filters=compiled,
+                )
+                deleted = int(count.agg.get("_total", 0)) if count.agg else 0
+                coll.delete_by_filter(compiled)
+                return deleted
+        return super().delete(ids=ids, filter=filter, limit=limit)
+
+    def update_data(self, data_list: list[str] | None) -> list[str]:
         result = self.get_collection().update_data(data_list)
         return [str(item) for item in result]
 
