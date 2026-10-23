@@ -853,8 +853,18 @@ class QdrantCollection(ICollection):
         offset: int = 0,
         filters: dict[str, Any] | None = None,
         output_fields: list[str] | None = None,
+        advance: dict[str, Any] | None = None,
     ) -> SearchResult:
         del index_name
+        if advance:
+            # Newer bases pass server-side post-process ops (e.g. remote glob's
+            # path_glob) through this hook. The Qdrant backend cannot execute
+            # them, and silently ignoring them would return unfiltered random
+            # samples, so raise and let callers fall back to the filesystem
+            # implementation instead.
+            raise NotImplementedError(
+                "Qdrant backend does not support advance/post-process search options"
+            )
         # Filter-only enumeration must not synthesize a dense vector: Qdrant
         # strict mode caps similarity-search limits (max_query_limit) while
         # scroll pagination is unrestricted, and a synthetic vector would also

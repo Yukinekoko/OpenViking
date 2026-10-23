@@ -1313,6 +1313,20 @@ def test_search_by_random_uses_scroll_not_similarity_search() -> None:
     assert request["body"]["limit"] == 256
 
 
+def test_search_by_random_rejects_advance_post_process_ops() -> None:
+    transport = _ScriptedTransport((200, {"result": {"points": [], "next_page_offset": None}}))
+    collection = _make_qdrant_collection(transport)
+
+    with pytest.raises(NotImplementedError):
+        collection.search_by_random(
+            "default",
+            limit=10,
+            advance={"post_process_ops": [{"op": "path_glob", "field": "uri", "pattern": "/a/*"}]},
+        )
+
+    assert transport.requests == []
+
+
 def test_delete_by_filter_posts_native_filter_delete() -> None:
     transport = _ScriptedTransport((200, {"result": {}}))
     collection = _make_qdrant_collection(transport)

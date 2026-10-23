@@ -170,11 +170,10 @@ class QdrantCollectionAdapter(CollectionAdapter):
         *,
         ids: list[str] | None = None,
         filter: Any = None,
-        limit: int = 100000,
     ) -> int:
         # Prefer Qdrant's native filter deletion: one server-side request,
         # unaffected by strict-mode similarity-search limits, and no
-        # truncation on match sets larger than *limit*.
+        # truncation on match sets larger than base batching.
         if not ids and filter is not None:
             compiled = self._compile_filter(filter)
             if compiled:
@@ -187,7 +186,7 @@ class QdrantCollectionAdapter(CollectionAdapter):
                 deleted = int(count.agg.get("_total", 0)) if count.agg else 0
                 coll.delete_by_filter(compiled)
                 return deleted
-        return super().delete(ids=ids, filter=filter, limit=limit)
+        return super().delete(ids=ids, filter=filter)
 
     def update_data(self, data_list: list[str] | None) -> list[str]:
         result = self.get_collection().update_data(data_list)
